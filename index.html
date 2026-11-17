@@ -452,7 +452,7 @@ if(stage){
    const target=mesh.position.clone();target.x+=random(-.25,.25);target.z+=random(-.5,.5);
    mesh.position.set(random(-3.5,-2.3),random(2.8,4.6),random(-1.8,1.8));
    mesh.rotation.set(random(0,6),random(0,6),random(0,6));
-   animations.push({mesh,target,final:qFor(mesh.userData.number),start:performance.now()+i*115,duration:1250+i*130,spin:new THREE.Vector3(random(5,8),random(7,11),random(5,9)),bounce:random(.3,.55)});
+   animations.push({mesh,target,final:qFor(mesh.userData.number),start:performance.now()+i*115,duration:(stageId==='trainingDiceStage'?1850:1250)+i*(stageId==='trainingDiceStage'?160:130),spin:new THREE.Vector3(random(5,8),random(7,11),random(5,9)),bounce:random(.3,.55)});
   });
  }
  const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();let keepDie=()=>{},canKeep=false;
@@ -526,7 +526,7 @@ if(stage){
  function scheduleHumanTurnEnd(){
   if(!state()||!t.rolls||t.rolls<t.maxRoll||t.mustRoll)return;
   const token=epoch, serial=humanTurnSerial, player=t.active[t.index], round=t.round, segment=t.segment;
-  botPause(1150).then(()=>{
+  botPause(2900).then(()=>{
    if(!t||epoch!==token||humanTurnSerial!==serial||t.phase!=='turn'||t.active[t.index]!==player||player!==0||t.round!==round||t.segment!==segment||t.rolls<t.maxRoll||t.mustRoll)return;
    done([...t.kept,...t.dice],t.streetEligible,t.rolls);
   });
@@ -578,13 +578,13 @@ if(stage){
  async function botTurnVisible(id,token){
   // Each computer roll is rendered on the same Three.js board as a human roll.
   // A changed visual key triggers the existing physical dice animation.
-  await botPause(500);
+  await botPause(800);
   while(botValid(token,id)&&t.rolls<t.maxRoll){
    t.dice=Array.from({length:3-t.kept.length},roll);
    t.rolls++;
    trainingVisualKey++;
    render();
-   await botPause(1250);
+   await botPause(2800);
    if(!botValid(token,id))return;
    const score=rank([...t.kept,...t.dice],t.streetEligible);
    if(score===1000||score>=904||t.rolls>=t.maxRoll||t.kept.length===3)break;
@@ -594,7 +594,7 @@ if(stage){
     t.dice=t.dice.filter(v=>v!==1);
     t.streetEligible=false;
     render();
-    await botPause(650);
+    await botPause(850);
     if(!botValid(token,id))return;
    }
    if(t.kept.length===3)break;
@@ -603,7 +603,7 @@ if(stage){
   const finalDice=[...t.kept,...t.dice];
   t.message=name(id)+' beendet seinen Zug: '+finalDice.join(' · ');
   render();
-  await botPause(1100);
+  await botPause(1700);
   if(botValid(token,id))done(finalDice,t.streetEligible,t.rolls);
  }
  function done(d,eligible=true,usedRolls=t.rolls){const id=t.active[t.index];t.turns[id]={dice:d,rank:rank(d,eligible)};if(t.index===0)t.maxRoll=usedRolls;t.index++;resetTurn();if(t.index>=t.active.length){finishRound();return}t.message='';render();if(t.active[t.index]!==0)bots();}
