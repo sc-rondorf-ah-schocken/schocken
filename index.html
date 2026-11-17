@@ -522,23 +522,57 @@ if(stage){
  const name=i=>i===0?'Du':'Computer '+i;
  const state=()=>t&&t.phase==='turn'&&t.active[t.index]===0;
  let trainingVisualKey=0;
+ let humanTurnSerial=0;
+ function scheduleHumanTurnEnd(){
+  if(!state()||!t.rolls||t.rolls<t.maxRoll||t.mustRoll)return;
+  const token=epoch, serial=humanTurnSerial, player=t.active[t.index], round=t.round, segment=t.segment;
+  botPause(1150).then(()=>{
+   if(!t||epoch!==token||humanTurnSerial!==serial||t.phase!=='turn'||t.active[t.index]!==player||player!==0||t.round!==round||t.segment!==segment||t.rolls<t.maxRoll||t.mustRoll)return;
+   done([...t.kept,...t.dice],t.streetEligible,t.rolls);
+  });
+ }
  function render(){if(!t)return;show('trainingSetup',false);show('trainingBoard',true);
   el('trainingHeading').textContent=(t.mode==='halves'?({'half1':'1. Halbzeit','half2':'2. Halbzeit','final':'Finale'}[t.segment]+' · '):'')+'Runde '+t.round;
   el('trainingInfo').textContent=t.phase==='finished'?'Training beendet':t.phase==='result'?'Runde abgeschlossen':name(t.active[t.index])+' ist am Zug · Wurf '+t.rolls+'/'+t.maxRoll;
   el('trainingPlayers').textContent='Deckel in der Mitte: '+t.pool+' · '+t.active.map(i=>name(i)+': '+t.caps[i]).join(' | ')+(t.mode==='halves'?' · Halbzeit 1 verloren: '+(t.h1===null?'offen':name(t.h1))+' · Halbzeit 2 verloren: '+(t.h2===null?'offen':name(t.h2)):'');
   el('trainingDice').replaceChildren();[...t.kept,...t.dice].forEach((v,j)=>{const b=document.createElement('button');b.className='die'+(j<t.kept.length?' kept':'');b.textContent=faces[v];b.disabled=!state()||j<t.kept.length||v!==1||t.rolls>=t.maxRoll;b.onclick=()=>{t.dice.splice(j-t.kept.length,1);t.kept.push(1);t.streetEligible=false;render()};el('trainingDice').append(b)});
   const chips=el('trainingTablePlayers');chips.replaceChildren();
-  t.active.forEach(i=>{const chip=document.createElement('div');chip.className='player-chip'+(t.phase==='turn'&&t.active[t.index]===i?' current':'');chip.textContent=name(i)+' · '+t.caps[i]+' Deckel';chips.append(chip)});
+  t.active.forEach((i,seat)=>{
+   const count=t.caps[i];const chip=document.createElement('div');chip.className='player-chip seat'+(t.phase==='turn'&&t.active[t.index]===i?' current':'');
+   chip.style.setProperty('--seat',seat);chip.style.setProperty('--total',t.active.length);
+   const avatar=document.createElement('span');avatar.className='player-avatar';avatar.textContent=name(i).slice(0,1).toUpperCase();
+   const details=document.createElement('span');details.className='player-details';
+   const label=document.createElement('strong');label.textContent=name(i);
+   const amount=document.createElement('span');amount.className='cap-number';amount.textContent=count+' Deckel';
+   const completed=t.turns[i];
+   const isRolling=t.phase==='turn'&&t.active[t.index]===i;
+   const currentDice=isRolling&&t.rolls>0?[...t.kept,...t.dice]:[];
+   const status=document.createElement('span');
+   status.className='player-roll'+(completed||currentDice.length?'':' pending');
+   if(completed){
+    status.textContent='Wurf: '+completed.dice.join(' · ');
+    status.setAttribute('aria-label','Abgeschlossener Wurf: '+completed.dice.join(', '));
+   }else if(currentDice.length){
+    status.textContent='Wurf '+t.rolls+'/'+t.maxRoll+': '+currentDice.join(' · ');
+    status.setAttribute('aria-label','Aktueller Wurf: '+currentDice.join(', '));
+   }else{
+    status.textContent=isRolling?'Am Würfeln':'Noch kein Wurf';
+   }
+   details.append(label,amount,status);
+   const stack=document.createElement('span');stack.className='cap-stack';stack.setAttribute('aria-label',count+' Deckel');
+   for(let j=0;j<Math.min(count,7);j++){const cap=document.createElement('i');cap.style.setProperty('--chip',j);stack.append(cap)}
+   chip.append(avatar,details,stack);chips.append(chip);
+  });
   window.schockenTraining3d?.update({dice:t.dice,kept:t.kept,pool:t.pool,rollKey:String(trainingVisualKey),animate:t.rolls>0,canKeep:state()&&t.rolls>0&&t.rolls<t.maxRoll,keepDie:i=>{if(!state()||t.dice[i]!==1||t.rolls>=t.maxRoll)return;t.dice.splice(i,1);t.kept.push(1);t.streetEligible=false;render()}});
   el('trainingKept').textContent=t.kept.length+' Eins(en) gesichert';
   el('trainingRoll').disabled=!state()||t.rolls>=t.maxRoll;
-  el('trainingDone').disabled=!state()||!t.rolls||t.mustRoll;
+  el('trainingDone').disabled=!state()||!t.rolls||t.mustRoll||t.rolls>=t.maxRoll;
   el('trainingConvert').disabled=!state()||t.mustRoll||!t.rolls||t.rolls>=t.maxRoll||t.dice.filter(x=>x===6).length<2;
   el('trainingUnkeep').disabled=!state()||!t.kept.length||t.rolls>=t.maxRoll;
   show('trainingNext',t.phase==='result');
   el('trainingResult').textContent=t.message||'';
  }
- function resetTurn(){trainingVisualKey++;t.rolls=0;t.dice=[];t.kept=[];t.mustRoll=false;t.streetEligible=true;}
+ function resetTurn(){humanTurnSerial++;trainingVisualKey++;t.rolls=0;t.dice=[];t.kept=[];t.mustRoll=false;t.streetEligible=true;}
  const botPause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  const botValid=(token,id)=>t&&epoch===token&&t.phase==='turn'&&t.active[t.index]===id;
  async function botTurnVisible(id,token){
@@ -576,7 +610,7 @@ if(stage){
  function bots(){if(!t||t.phase!=='turn'||t.active[t.index]===0)return;const token=epoch,id=t.active[t.index];botTurnVisible(id,token).catch(e=>console.error('Trainingsgegner:',e));}
  function finishRound(){
   const ids=t.active;
-  const ordered=[...ids.slice(t.starter),...ids.slice(0,t.starter)];
+  const ordered=[...ids];
   const best=ordered.reduce((a,b)=>t.turns[b].rank>t.turns[a].rank?b:a);
   let worst=ordered.reduce((a,b)=>t.turns[b].rank<t.turns[a].rank?b:a);
   const highest=t.turns[best].rank;
@@ -585,7 +619,7 @@ if(stage){
   if(schock!==undefined){
    if(ids.every(i=>t.turns[i].rank===1000))worst=ordered[ordered.length-1];
    t.message='SCHOCK AUS! '+name(schock)+' gewinnt · '+name(loser)+' verliert';
-   finishSegment(loser,true);render();return;
+   finishSegment(loser,true);render();if(t.phase==='result'){const token=epoch;botPause(2400).then(()=>{if(t&&epoch===token&&t.phase==='result')next()});}return;
   }
   const requested=penalty(highest);
   if(t.pool>0){amount=Math.min(t.pool,requested);t.pool-=amount;}
@@ -595,6 +629,7 @@ if(stage){
   if(t.caps[loser]>=13)finishSegment(loser,false);
   else {t.phase='result';t.starter=loser;}
   render();
+  if(t.phase==='result'){const token=epoch;botPause(2400).then(()=>{if(t&&epoch===token&&t.phase==='result')next()});}
  }
  function finishSegment(loser,schock){
   if(t.mode==='single'){t.phase='finished';t.message+=' · '+name(loser)+' verliert das Training';return;}
@@ -602,16 +637,21 @@ if(stage){
   if(t.segment==='half2'){t.h2=loser;if(t.h1===t.h2){t.phase='finished';t.message+=' · '+name(loser)+' verliert beide Halbzeiten';}else{t.segment='final';t.transition=true;t.phase='result';t.message+=' · Finale: '+name(t.h1)+' gegen '+name(t.h2);}return;}
   t.phase='finished';t.message+=' · '+name(loser)+' verliert das Finale';
  }
- function next(){if(!t||t.phase!=='result')return;epoch++;if(t.transition){t.transition=false;t.active=t.segment==='final'?[t.h1,t.h2]:t.everyone.slice();t.caps=Array(t.everyone.length).fill(0);t.pool=13;t.round=1;t.starter=0;}else t.round++;
-  if(t.pool===0){const first=t.active.findIndex((id,k)=>k>=t.starter&&t.caps[id]>0);const fallback=t.active.findIndex(id=>t.caps[id]>0);if(first>=0)t.starter=first;else if(fallback>=0)t.starter=fallback;}
-  t.active=[...t.active.slice(t.starter),...t.active.slice(0,t.starter)];t.starter=0;t.phase='turn';t.index=0;t.maxRoll=3;t.turns={};t.message='';resetTurn();render();if(t.active[0]!==0)bots();}
+ function next(){if(!t||t.phase!=='result')return;epoch++;
+  if(t.transition){t.transition=false;t.active=t.segment==='final'?[t.h1,t.h2]:t.everyone.slice();t.caps=Array(t.everyone.length).fill(0);t.pool=13;t.round=1;t.starter=t.active[0];}
+  else t.round++;
+  // starter is a player ID, not an array index. A losing bot must start the next round.
+  let startIndex=t.active.indexOf(t.starter);
+  if(startIndex<0)startIndex=0;
+  t.active=[...t.active.slice(startIndex),...t.active.slice(0,startIndex)];
+  t.starter=t.active[0];t.phase='turn';t.index=0;t.maxRoll=3;t.turns={};t.message='';resetTurn();render();if(t.active[0]!==0)bots();}
  function start(){epoch++;trainingVisualKey++;const n=Number(el('trainingBots').value);t={mode:el('trainingMode').value,segment:el('trainingMode').value==='halves'?'half1':'single',everyone:Array.from({length:n+1},(_,i)=>i),active:Array.from({length:n+1},(_,i)=>i),caps:Array(n+1).fill(0),pool:13,round:1,index:0,rolls:0,maxRoll:3,dice:[],kept:[],turns:{},phase:'turn',starter:0,mustRoll:false,streetEligible:true,h1:null,h2:null,transition:false,message:''};render()}
  el('openTraining').onclick=()=>{show('training',true);el('training').scrollIntoView({behavior:'smooth'});};
  el('closeTraining').onclick=()=>{epoch++;t=null;show('training',false);show('trainingSetup',true);show('trainingBoard',false)};
  el('trainingStart').onclick=start;
  el('trainingRestart').onclick=()=>{epoch++;t=null;show('trainingSetup',true);show('trainingBoard',false)};
- el('trainingRoll').onclick=()=>{if(!state()||t.rolls>=t.maxRoll)return;t.streetEligible=t.kept.length===0;t.dice=Array.from({length:3-t.kept.length},roll);t.rolls++;trainingVisualKey++;t.mustRoll=false;render();};
- el('trainingDone').onclick=()=>{if(!state()||!t.rolls)return;done([...t.kept,...t.dice],t.streetEligible,t.rolls);};
+ el('trainingRoll').onclick=()=>{if(!state()||t.rolls>=t.maxRoll)return;t.streetEligible=t.kept.length===0;t.dice=Array.from({length:3-t.kept.length},roll);t.rolls++;trainingVisualKey++;t.mustRoll=false;render();scheduleHumanTurnEnd();};
+ el('trainingDone').onclick=()=>{if(!state()||!t.rolls||t.mustRoll)return;done([...t.kept,...t.dice],t.streetEligible,t.rolls);};
  el('trainingConvert').onclick=()=>{if(!state()||t.mustRoll||!t.rolls||t.rolls>=t.maxRoll||t.dice.filter(x=>x===6).length<2)return;let removed=0;t.dice=t.dice.filter(x=>{if(x===6&&removed<2){removed++;return false}return true});t.dice.push(6);t.kept.push(1);t.mustRoll=true;t.streetEligible=false;render()};
  el('trainingUnkeep').onclick=()=>{if(!state()||!t.kept.length||t.rolls>=t.maxRoll)return;t.kept.pop();t.dice.push(1);t.streetEligible=false;render()};
  el('trainingNext').onclick=next;
